@@ -1,11 +1,12 @@
 // components/NavBar.tsx
 "use client";
 
-import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import UserStatsPill from "@/components/UserStatsPill"; // remove this line + usage if you don't have the pill yet
+
+const NavBarClerkControls = dynamic(() => import("@/components/NavBarClerkControls"), {
+  ssr: false,
+});
 
 export default function NavBar() {
   const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -23,28 +24,7 @@ export default function NavBar() {
           </Link>
 
           {hasClerk ? (
-            <>
-              <SignedIn>
-                <Link href="/app" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-                  Study
-                </Link>
-                <Link href="/app/workspace" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-                  Workspace
-                </Link>
-                <Link href="/app/progress" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-                  Progress
-                </Link>
-              </SignedIn>
-
-              <Suspense fallback={<SignedOutAuthButtons nextTarget="/app" />}>
-                <SignedOutAuthButtonsFromLocation />
-              </Suspense>
-
-              <SignedIn>
-                <UserStatsPill />
-                <UserButton afterSignOutUrl="/" />
-              </SignedIn>
-            </>
+            <NavBarClerkControls />
           ) : (
             <Link href="/app" className="text-sm px-3 py-1.5 rounded bg-black text-white hover:opacity-90">
               Open study workspace
@@ -54,44 +34,4 @@ export default function NavBar() {
       </nav>
     </header>
   );
-}
-
-function SignedOutAuthButtonsFromLocation() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const nextTarget = buildAuthRedirectTarget(pathname, searchParams);
-  return <SignedOutAuthButtons nextTarget={nextTarget} />;
-}
-
-function SignedOutAuthButtons({ nextTarget }: { nextTarget: string }) {
-  return (
-    <SignedOut>
-      <SignInButton mode="modal" forceRedirectUrl={nextTarget} signUpForceRedirectUrl={nextTarget}>
-        <button className="text-sm px-3 py-1.5 rounded bg-black text-white">Sign in</button>
-      </SignInButton>
-      <SignUpButton mode="modal" forceRedirectUrl={nextTarget} signInForceRedirectUrl={nextTarget}>
-        <button className="text-sm px-3 py-1.5 rounded border">Create account</button>
-      </SignUpButton>
-    </SignedOut>
-  );
-}
-
-function buildAuthRedirectTarget(
-  pathname: string,
-  searchParams: ReturnType<typeof useSearchParams>
-) {
-  if (pathname === "/") {
-    const requestedTarget = searchParams.get("next");
-    return normalizeNextTarget(requestedTarget);
-  }
-
-  const query = searchParams.toString();
-  return normalizeNextTarget(query ? `${pathname}?${query}` : pathname);
-}
-
-function normalizeNextTarget(value: string | null | undefined) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed.startsWith("/")) return "/app";
-  if (trimmed.startsWith("//")) return "/app";
-  return trimmed;
 }
