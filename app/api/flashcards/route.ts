@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db";
+import { prisma, safeUpsertUser } from "@/lib/db";
 import { callLLMResult } from "@/lib/aiClient";
 import { put } from "@vercel/blob";
 import { transcribeAudioUrlWithRunpod } from "@/lib/asrClient";
@@ -2767,11 +2767,18 @@ export async function POST(req: Request) {
     }
 
     // Ensure user
-    const userRow = await timeIt("db_user_upsert_ms", async () =>
-      prisma.user.upsert({
-        where: { clerkUserId }, update: {}, create: { clerkUserId: clerkUserId! },
-      })
-    );
+    const userRow = await timeIt("db_user_upsert_ms", async () => safeUpsertUser(clerkUserId!, { id: true }));
+
+    if (!userRow) {
+      return respondJson(
+        {
+          error: "Your workspace persistence is unavailable right now. Flashcards were generated, but the deck could not be saved.",
+          code: "WORKSPACE_PERSISTENCE_UNAVAILABLE",
+          traceId,
+        },
+        { status: 503 }
+      );
+    }
 
     // Create deck
     let deckId: string;

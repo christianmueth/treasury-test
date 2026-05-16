@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, safeUpsertUser } from "@/lib/db";
 import { chatV1, type ChatV1Message } from "@/lib/aiGateway";
 import { formatStudentState } from "@/lib/reasoningEngine/studentState";
 import { sanitizeTutorChatSessionContext, type TutorChatSessionContext } from "@/lib/tutorChatSessionContext";
@@ -103,35 +103,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required", code: "BAD_REQUEST" }, { status: 400 });
     }
 
-    const user = await prisma.user.upsert({
-      where: { clerkUserId },
-      update: {},
-      create: { clerkUserId },
-      select: {
-        id: true,
-        studentState: true,
-      },
+    const user = await safeUpsertUser(clerkUserId, {
+      id: true,
+      studentState: true,
     });
 
-    const deck = body.deckId ? await loadOwnedDeck(user.id, body.deckId) : null;
-    const studentState = formatStudentState(user.studentState);
-    const recentRuns = await prisma.reasoningRun.findMany({
-      where: {
-        userId: user.id,
-        mode: { in: ["tutor_chat", "tutor_guidance", "study_recovery", "verify_answer", "compare_explanations"] },
-        ...(deck ? { OR: [{ deckId: deck.id }, { deckId: null }] } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-      select: {
-        id: true,
-        mode: true,
-        prompt: true,
-        finalAnswer: true,
-        title: true,
-        createdAt: true,
-      },
-    });
+    const deck = user && body.deckId ? await loadOwnedDeck(user.id, body.deckId) : null;
+    const studentState = user ? formatStudentState(user.studentState) : formatStudentState(null);
+    const recentRuns = user
+      ? await prisma.reasoningRun.findMany({
+          where: {
+            userId: user.id,
+            mode: { in: ["tutor_chat", "tutor_guidance", "study_recovery", "verify_answer", "compare_explanations"] },
+            ...(deck ? { OR: [{ deckId: deck.id }, { deckId: null }] } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          select: {
+            id: true,
+            mode: true,
+            prompt: true,
+            finalAnswer: true,
+            title: true,
+            createdAt: true,
+          },
+        })
+      : [];
 
     const messages: ChatV1Message[] = [
       {
@@ -159,30 +156,35 @@ export async function POST(req: Request) {
 
     const assistantMessage = sanitizeAssistantMessage(response.output_text);
 
-    const savedRun = await prisma.reasoningRun.create({
-      data: {
-        userId: user.id,
-        deckId: deck?.id ?? null,
-        mode: "tutor_chat",
-        origin: "persistent_tutor_panel",
-        title: deck?.title ?? "Workspace tutor chat",
-        prompt: message,
-        finalAnswer: assistantMessage,
-        metadata: {
-          path: cleanQueryValue(body.path),
-          focusConcept: cleanQueryValue(body.focusConcept),
-          focusReason: cleanQueryValue(body.focusReason),
-          weakConcepts: studentState.weakConcepts.slice(0, 3),
-          preferredExplanationStyle: studentState.preferredExplanationStyle,
-          liveContext,
-          workspaceContext,
-        } as Prisma.InputJsonValue,
-      },
-      select: {
-        id: true,
-        createdAt: true,
-      },
-    });
+    const savedRun = user
+      ? await prisma.reasoningRun.create({
+          data: {
+            userId: user.id,
+            deckId: deck?.id ?? null,
+            mode: "tutor_chat",
+            origin: "persistent_tutor_panel",
+            title: deck?.title ?? "Workspace tutor chat",
+            prompt: message,
+            finalAnswer: assistantMessage,
+            metadata: {
+              path: cleanQueryValue(body.path),
+              focusConcept: cleanQueryValue(body.focusConcept),
+              focusReason: cleanQueryValue(body.focusReason),
+              weakConcepts: studentState.weakConcepts.slice(0, 3),
+              preferredExplanationStyle: studentState.preferredExplanationStyle,
+              liveContext,
+              workspaceContext,
+            } as Prisma.InputJsonValue,
+          },
+          select: {
+            id: true,
+            createdAt: true,
+          },
+        })
+      : {
+          id: `msg_${Date.now()}`,
+          createdAt: new Date(),
+        };
 
     return NextResponse.json({
       ok: true,
@@ -193,6 +195,7 @@ export async function POST(req: Request) {
         createdAt: savedRun.createdAt.toISOString(),
       },
       context: buildContextSnapshot({ studentState, deck, recentRuns }),
+      degraded: !user,
     });
   } catch (error) {
     console.error("[TutorChat] POST failed:", error);

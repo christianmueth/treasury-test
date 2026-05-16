@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, safeUpsertUser } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,15 +128,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "A valid whiteboard snapshot is required." }, { status: 400 });
     }
 
-    const user = await prisma.user.upsert({
-      where: { clerkUserId },
-      update: {},
-      create: { clerkUserId },
-      select: { id: true },
-    });
+    const user = await safeUpsertUser(clerkUserId, { id: true });
 
     const boardId = cleanString(body.boardId) || `board-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const boardName = (cleanString(body.boardName) || snapshot.workspaceGoal || "Untitled board").slice(0, 120);
+
+    if (!user) {
+      return NextResponse.json({ ok: true, boardId, boardName, savedAt: null, degraded: true });
+    }
 
     const saved = await prisma.reasoningRun.create({
       data: {

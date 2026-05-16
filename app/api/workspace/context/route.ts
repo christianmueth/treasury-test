@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db";
+import { prisma, safeUpsertUser } from "@/lib/db";
 import { sanitizeWorkspaceContext } from "@/lib/workspaceContext";
 import {
   getLatestPersistedWorkspaceContext,
@@ -47,12 +47,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "A valid workspace context is required." }, { status: 400 });
     }
 
-    const user = await prisma.user.upsert({
-      where: { clerkUserId },
-      update: {},
-      create: { clerkUserId },
-      select: { id: true },
-    });
+    const user = await safeUpsertUser(clerkUserId, { id: true });
+
+    if (!user) {
+      return NextResponse.json({
+        ok: true,
+        context,
+        savedAt: null,
+        reused: false,
+        degraded: true,
+      });
+    }
 
     const saved = await persistWorkspaceContextSnapshot({
       userId: user.id,

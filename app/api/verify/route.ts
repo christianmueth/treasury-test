@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { safeUpsertUser } from "@/lib/db";
 import { createReasoningEngine } from "@/lib/reasoningEngine/engine";
 import { persistReasoningResponseRun } from "@/lib/reasoningEngine/persistence";
 import { classifyMisconceptionSignalsFromVerification, updateStudentStateFromVerification } from "@/lib/reasoningEngine/studentState";
@@ -119,33 +119,30 @@ export async function POST(req: Request) {
 
     let reasoningRunId: string | null = null;
     if (persist) {
-      const user = await prisma.user.upsert({
-        where: { clerkUserId: clerkUserId! },
-        update: {},
-        create: { clerkUserId: clerkUserId! },
-        select: { id: true },
-      });
+      const user = await safeUpsertUser(clerkUserId!, { id: true });
 
-      const saved = await persistReasoningResponseRun({
-        userId: user.id,
-        mode: reasoningMode,
-        origin: body.origin,
-        title: body.title,
-        prompt: body.prompt,
-        response,
-        verificationApplied: true,
-        metadata,
-      });
-      reasoningRunId = saved.id;
+      if (user) {
+        const saved = await persistReasoningResponseRun({
+          userId: user.id,
+          mode: reasoningMode,
+          origin: body.origin,
+          title: body.title,
+          prompt: body.prompt,
+          response,
+          verificationApplied: true,
+          metadata,
+        });
+        reasoningRunId = saved.id;
 
-      await updateStudentStateFromVerification({
-        userId: user.id,
-        mode: reasoningMode as "verify_answer" | "compare_explanations",
-        prompt: body.prompt,
-        response,
-        answer: mode === "answer" ? (body as VerifyAnswerBody).answer?.trim() : undefined,
-        expectedAnswer: mode === "answer" ? (body as VerifyAnswerBody).expectedAnswer?.trim() : undefined,
-      });
+        await updateStudentStateFromVerification({
+          userId: user.id,
+          mode: reasoningMode as "verify_answer" | "compare_explanations",
+          prompt: body.prompt,
+          response,
+          answer: mode === "answer" ? (body as VerifyAnswerBody).answer?.trim() : undefined,
+          expectedAnswer: mode === "answer" ? (body as VerifyAnswerBody).expectedAnswer?.trim() : undefined,
+        });
+      }
     }
 
     return NextResponse.json({
@@ -153,7 +150,8 @@ export async function POST(req: Request) {
       mode,
       reasoning: response,
       reasoningRunId,
-      persisted: persist,
+      persisted: persist && !!reasoningRunId,
+      degraded: persist && !reasoningRunId,
       traceId,
     });
   } catch (error: any) {
