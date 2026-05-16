@@ -37,10 +37,13 @@ function extractTextFromRunpodOutput(output: any): string | null {
     root?.generated_text ??
     root;
 
+
   if (typeof maybeText === "string") {
+
     const cleaned = stripThinkBlocks(maybeText);
     return cleaned || null;
   }
+
 
   const coerced = coerceToString(maybeText);
   if (!coerced) return null;
@@ -48,8 +51,10 @@ function extractTextFromRunpodOutput(output: any): string | null {
   return cleaned || null;
 }
 
+
 function safeEndpointLabel(endpoint: string): string {
   try {
+
     const url = new URL(endpoint);
     return `${url.host}${url.pathname}`;
   } catch {
@@ -57,12 +62,14 @@ function safeEndpointLabel(endpoint: string): string {
   }
 }
 
+
 function parseEndpoint(endpoint: string): {
   url: URL | null;
   normalizedPathname: string | null;
 } {
   try {
     const url = new URL(endpoint);
+
     const normalizedPathname = url.pathname.replace(/\/+$/, "");
     return { url, normalizedPathname };
   } catch {
@@ -71,11 +78,14 @@ function parseEndpoint(endpoint: string): {
 }
 
 function buildRunpodStatusUrl(endpoint: string, jobId: string): string {
+
   const { url, normalizedPathname } = parseEndpoint(endpoint);
   if (!url || !normalizedPathname) {
+
     // Best-effort fallback matching prior behavior.
     return endpoint.replace(/\/run\/?($|\?)/, `/status/${jobId}$1`);
   }
+
 
   if (!normalizedPathname.endsWith("/run")) {
     return endpoint;
@@ -89,10 +99,12 @@ function buildRunpodStatusUrl(endpoint: string, jobId: string): string {
 }
 
 function sleep(ms: number) {
+
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -107,6 +119,7 @@ function coerceToString(value: unknown): string | null {
   if (value == null) return null;
 
   // Some providers return a plain object (e.g., { choices: [...] })
+
   // If we can't find a known text field, avoid returning "[object Object]".
   try {
     return JSON.stringify(value);
@@ -117,8 +130,10 @@ function coerceToString(value: unknown): string | null {
 
 function fingerprintSecret(value: string): string {
   // Non-reversible fingerprint for debugging env mismatches across deployments.
+
   // Safe to log (does not reveal the secret).
   try {
+
     return createHash("sha256").update(value).digest("hex").slice(0, 10);
   } catch {
     return "unknown";
@@ -127,6 +142,7 @@ function fingerprintSecret(value: string): string {
 
 export type LLMFailureReason =
   | "NOT_CONFIGURED"
+
   | "HTTP_ERROR"
   | "STATUS_HTTP_ERROR"
   | "JOB_FAILED"
@@ -141,6 +157,7 @@ export type CallLLMResult =
       jobId?: string;
     }
   | {
+
       ok: false;
       reason: LLMFailureReason;
       httpStatus?: number;
@@ -150,6 +167,7 @@ export type CallLLMResult =
     };
 
 export type CallLLMOptions = {
+
   topP?: number;
   stop?: string[];
   guidedJson?: unknown;
@@ -159,19 +177,24 @@ export type CallLLMOptions = {
   disableOpenAICompat?: boolean;
 };
 
+
 let cachedOpenAICompatModelId: string | null = null;
 let cachedOpenAICompatModelIdAtMs = 0;
 
 async function discoverOpenAICompatModelId(modelsUrl: string, authHeader: string): Promise<string | null> {
+
   const now = Date.now();
   const ttlMs = 10 * 60 * 1000;
   if (cachedOpenAICompatModelId && now - cachedOpenAICompatModelIdAtMs < ttlMs) return cachedOpenAICompatModelId;
 
+
   try {
     const resp = await fetch(modelsUrl, {
+
       method: "GET",
       headers: { Authorization: authHeader },
     });
+
     if (!resp.ok) return null;
     const data = (await resp.json()) as any;
     const id = typeof data?.data?.[0]?.id === "string" ? String(data.data[0].id) : null;
@@ -182,6 +205,7 @@ async function discoverOpenAICompatModelId(modelsUrl: string, authHeader: string
   } catch {
     return null;
   }
+
 }
 
 function buildRunpodOpenAICompatChatUrls(endpoint: string): string[] {
@@ -194,6 +218,7 @@ function buildRunpodOpenAICompatChatUrls(endpoint: string): string[] {
     const parts = url.pathname.split("/").filter(Boolean);
     // Expect: ["v2", "<id>", "run"] or ["v2", "<id>", "runsync"]
     if (parts.length >= 2 && parts[0] === "v2") {
+
       const endpointId = parts[1];
       const base = `${url.protocol}//${url.host}`;
       return [
@@ -204,6 +229,7 @@ function buildRunpodOpenAICompatChatUrls(endpoint: string): string[] {
     return [];
   } catch {
     return [];
+
   }
 }
 
@@ -214,6 +240,7 @@ function buildRunpodOpenAICompatChatUrls(endpoint: string): string[] {
  * @returns The generated text content or null on error
  */
 export async function callLLMResult(
+
   messages: Message[],
   maxTokens = 4000,
   temperature = 0.7,
@@ -225,10 +252,12 @@ export async function callLLMResult(
 
   if (!endpoint || !apiKey) {
     console.error("[aiClient] RUNPOD_ENDPOINT or RUNPOD_API_KEY missing");
+
     return { ok: false, reason: "NOT_CONFIGURED" };
   }
 
   const rawAuth = apiKey.trim();
+
   const bearerAuthHeaderValue = rawAuth.toLowerCase().startsWith("bearer ") ? rawAuth : `Bearer ${rawAuth}`;
   const rawAuthHeaderValue = rawAuth.replace(/^bearer\s+/i, "");
 

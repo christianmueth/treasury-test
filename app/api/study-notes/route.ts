@@ -14,9 +14,9 @@ function cleanText(s: string) { return s.replace(/\s+/g, " ").trim(); }
 function truncate(s: string, max = MAX_SOURCE_CHARS) { return s.length > max ? s.slice(0, max) : s; }
 
 async function generateStudyNotesWithOpenAI(source: string): Promise<string | null> {
-  const apiKey = process.env.RUNPOD_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.error("[StudyNotes] RUNPOD_API_KEY missing");
+    console.error("[StudyNotes] OPENAI_API_KEY missing");
     return null;
   }
   
@@ -40,7 +40,7 @@ Make the notes comprehensive yet concise, suitable for review and exam prep.`;
   const userPrompt = `Create detailed study notes and overview for the following content:\n\n${truncate(source)}`;
 
   try {
-    console.log("[StudyNotes] Calling RunPod API...");
+    console.log("[StudyNotes] Calling OpenAI API...");
     
     const messages = [
       { role: "system" as const, content: systemPrompt },
@@ -50,13 +50,13 @@ Make the notes comprehensive yet concise, suitable for review and exam prep.`;
     const result = await callLLMResult(messages, 4000);
     if (!result.ok) {
       if (result.reason === "TIMEOUT" && String(result.lastStatus || "").toUpperCase() === "IN_QUEUE") {
-        const err: any = new Error("RunPod job is still in queue (no capacity). Try again in a minute.");
+        const err: any = new Error("OpenAI request is still queued. Try again in a minute.");
         err.code = "RUNPOD_IN_QUEUE";
         err.jobId = result.jobId;
         err.lastStatus = result.lastStatus;
         throw err;
       }
-      console.error("[StudyNotes] RunPod call failed:", result.reason, result.httpStatus || "");
+      console.error("[StudyNotes] OpenAI call failed:", result.reason, result.httpStatus || "");
       return null;
     }
 
@@ -65,7 +65,7 @@ Make the notes comprehensive yet concise, suitable for review and exam prep.`;
     console.log(`[StudyNotes] Generated ${content.length} characters of notes`);
     return content.trim();
   } catch (err: any) {
-    console.error("[StudyNotes] RunPod error:", err.message);
+    console.error("[StudyNotes] OpenAI error:", err.message);
     return null;
   }
 }
@@ -215,19 +215,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // In production we should not silently fail if RunPod isn't configured.
+    // In production we should not silently fail if OpenAI isn't configured.
     if (process.env.NODE_ENV === "production") {
-      const missingEndpoint = !process.env.RUNPOD_ENDPOINT;
-      const missingApiKey = !process.env.RUNPOD_API_KEY;
-      const missingRunpod = missingEndpoint || missingApiKey;
-      if (missingRunpod) {
+      const missingApiKey = !process.env.OPENAI_API_KEY;
+      if (missingApiKey) {
         return NextResponse.json(
           {
-            error: "RunPod is not configured on the server. Set RUNPOD_ENDPOINT and RUNPOD_API_KEY in Vercel environment variables.",
-            code: "RUNPOD_NOT_CONFIGURED",
+            error: "OpenAI is not configured on the server. Set OPENAI_API_KEY in Vercel environment variables.",
+            code: "OPENAI_NOT_CONFIGURED",
             missing: {
-              RUNPOD_ENDPOINT: missingEndpoint,
-              RUNPOD_API_KEY: missingApiKey,
+              OPENAI_API_KEY: missingApiKey,
             },
             vercel: {
               VERCEL_ENV: process.env.VERCEL_ENV || null,
@@ -254,8 +251,8 @@ export async function POST(req: Request) {
       if (e?.code === "RUNPOD_IN_QUEUE") {
         return NextResponse.json(
           {
-            error: "AI generation is queued on RunPod and did not start within the request time limit. Please retry shortly.",
-            code: "RUNPOD_IN_QUEUE",
+            error: "AI generation did not start within the request time limit. Please retry shortly.",
+            code: "OPENAI_TIMEOUT",
             jobId: e?.jobId || null,
             lastStatus: e?.lastStatus || null,
           },

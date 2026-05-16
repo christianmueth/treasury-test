@@ -1082,8 +1082,8 @@ async function generateCardsWithOpenAI(
   count = DEFAULT_CARD_COUNT,
   opts?: { preferQa?: boolean }
 ) {
-  if (!process.env.RUNPOD_API_KEY) {
-    console.warn("[Cards] RunPod API key not configured, using fallback");
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn("[Cards] OPENAI_API_KEY not configured, using fallback");
     return null;
   }
   
@@ -1106,7 +1106,7 @@ async function generateCardsWithOpenAI(
   // to force structured output from this endpoint. Default ON; allow opt-out.
   const useGuidedJson = process.env.FLASHCARDS_USE_GUIDED_JSON !== "0";
   console.log(
-    `[Cards] Guided JSON mode=${useGuidedJson ? "on" : "off"} (FLASHCARDS_USE_GUIDED_JSON=${process.env.FLASHCARDS_USE_GUIDED_JSON ?? "(default)"}, RUNPOD_GUIDED_JSON=${process.env.RUNPOD_GUIDED_JSON || "0"})`
+    `[Cards] Guided JSON mode=${useGuidedJson ? "on" : "off"} (FLASHCARDS_USE_GUIDED_JSON=${process.env.FLASHCARDS_USE_GUIDED_JSON ?? "(default)"})`
   );
   const makeGuidedJson = (n: number) =>
     useGuidedJson
@@ -1138,7 +1138,7 @@ async function generateCardsWithOpenAI(
         }
       : undefined;
 
-  const modelName = process.env.RUNPOD_MODEL || "deepseek-r1";
+  const modelName = process.env.OPENAI_MODEL || "gpt-4o-mini";
   // For transcripts (esp. YouTube), JSON output often breaks due to unescaped quotes.
   // Q/A mode tends to be faster and more parseable for transcript-like sources.
   // Allow disabling globally via FLASHCARDS_QA_MODE=0, but still allow a caller hint.
@@ -1881,19 +1881,16 @@ export async function POST(req: Request) {
 
     const clerkUserId = userId ?? undefined;
 
-    // In production we should not silently fall back if RunPod isn't configured.
+    // In production we should not silently fall back if OpenAI isn't configured.
     if (process.env.NODE_ENV === "production") {
-      const missingEndpoint = !process.env.RUNPOD_ENDPOINT;
-      const missingApiKey = !process.env.RUNPOD_API_KEY;
-      const missingRunpod = missingEndpoint || missingApiKey;
-      if (missingRunpod) {
+      const missingApiKey = !process.env.OPENAI_API_KEY;
+      if (missingApiKey) {
         return NextResponse.json(
           {
-            error: "RunPod is not configured on the server. Set RUNPOD_ENDPOINT and RUNPOD_API_KEY in Vercel environment variables.",
-            code: "RUNPOD_NOT_CONFIGURED",
+            error: "OpenAI is not configured on the server. Set OPENAI_API_KEY in Vercel environment variables.",
+            code: "OPENAI_NOT_CONFIGURED",
             missing: {
-              RUNPOD_ENDPOINT: missingEndpoint,
-              RUNPOD_API_KEY: missingApiKey,
+              OPENAI_API_KEY: missingApiKey,
             },
             vercel: {
               VERCEL_ENV: process.env.VERCEL_ENV || null,
