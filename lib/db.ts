@@ -14,10 +14,20 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") global.prisma = prisma;
 
 export function isMissingUserTableError(error: unknown) {
+  const code = typeof (error as { code?: unknown } | null)?.code === "string"
+    ? String((error as { code?: string }).code)
+    : "";
+  const table = String((error as { meta?: { table?: unknown } } | null)?.meta?.table || "");
+  const message = String((error as { message?: unknown } | null)?.message || "");
+
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2021" &&
-    String(error.meta?.table || "").includes("User")
+    code === "P2021" &&
+    (
+      table.includes("User") ||
+      /public\.User/i.test(message) ||
+      /table\s+.*User\s+does not exist/i.test(message) ||
+      /prisma\.user\.upsert\(\)/i.test(message)
+    )
   );
 }
 
