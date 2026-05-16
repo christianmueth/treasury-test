@@ -102,7 +102,16 @@ export async function GET(req: Request) {
       boardName: selected?.boardName ?? null,
     });
   } catch (error) {
-    return internalErrorResponse("[WorkspaceWhiteboard] GET failed:", error);
+    console.error("[WorkspaceWhiteboard] GET failed:", error);
+    return NextResponse.json({
+      ok: true,
+      boards: [],
+      snapshot: null,
+      savedAt: null,
+      boardId: null,
+      boardName: null,
+      degraded: true,
+    });
   }
 }
 
