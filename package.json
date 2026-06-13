@@ -15,6 +15,7 @@
     "reasoning:train:recovery-baseline": "node scripts/train-recovery-baseline.mjs",
     "reasoning:eval:reranker": "node scripts/evaluate-tutoring-reranker.mjs",
     "flashcards:smoketest": "node scripts/flashcards-smoketest.mjs",
+    "label-review:smoketest": "node scripts/label-review-smoketest.mjs",
     "workspace:presentation:smoketest": "node scripts/workspace-presentation-smoketest.mjs",
     "workspace:whiteboard:smoketest": "node scripts/workspace-whiteboard-assist-smoketest.mjs",
     "youtube:transcript:smoketest": "node scripts/youtube-transcript-smoketest.mjs",

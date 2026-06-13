@@ -5,9 +5,15 @@ import { NextResponse } from "next/server";
 // You can extend this list with other public paths as needed
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/label-review(.*)",
   "/how-adaptive-guidance-works(.*)",
+  "/privacy(.*)",
+  "/privacy-policy(.*)",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/api/label-review(.*)",
+  "/api/workspace/presentation-plan(.*)",
+  "/api/workspace/whiteboard-assist(.*)",
   "/api/transcribe(.*)",
   "/api/youtube/transcript(.*)",
   "/api/youtube-transcript(.*)",
@@ -35,6 +41,8 @@ export default clerkMiddleware(async (auth, request) => {
     testKey &&
     (path.startsWith("/api/flashcards") ||
       path.startsWith("/api/blob-upload-url") ||
+      path.startsWith("/api/workspace/presentation-plan") ||
+      path.startsWith("/api/workspace/whiteboard-assist") ||
       path.startsWith("/api/youtube-transcript") ||
       path.startsWith("/api/youtube/runpod-transcribe")) &&
     request.headers.get("x-flashcards-test-key") === testKey

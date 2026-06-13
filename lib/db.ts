@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -7,11 +7,35 @@ declare global {
 
 export const prisma =
   global.prisma ||
-  new PrismaClient({
-    log: ["warn", "error"],
-  });
+  createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") global.prisma = prisma;
+
+function createPrismaClient(): PrismaClient {
+  try {
+    const runtimeRequire = eval("require") as NodeRequire;
+    const { PrismaClient: RuntimePrismaClient } = runtimeRequire("@prisma/client") as {
+      PrismaClient: new (options: { log: string[] }) => PrismaClient;
+    };
+
+    return new RuntimePrismaClient({
+      log: ["warn", "error"],
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message
+      ? error.message
+      : "@prisma/client is unavailable";
+
+    return new Proxy(
+      {},
+      {
+        get() {
+          throw new Error(`Prisma client is unavailable in this environment: ${message}`);
+        },
+      }
+    ) as PrismaClient;
+  }
+}
 
 export function isMissingUserTableError(error: unknown) {
   const code = typeof (error as { code?: unknown } | null)?.code === "string"

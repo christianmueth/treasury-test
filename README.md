@@ -73,6 +73,87 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Alcohol Label Review Prototype
+
+The standalone treasury take-home prototype lives at `/label-review`.
+
+What it does:
+
+- uploads PNG, JPG, or PDF alcohol labels
+- accepts application metadata as JSON
+- extracts candidate fields from the label
+- compares brand name, class/type, ABV, proof, net contents, and government warning
+- supports reviewing multiple labels in a single submission session by pairing uploaded files with a JSON array of application objects
+- includes bundled sample scenarios for fast reviewer evaluation
+
+Architecture:
+
+- Extraction: convert a label image or PDF into candidate structured fields.
+- Deterministic validation: compare extracted values against submitted application data using normalization, fuzzy matching, numeric comparison, and government warning rules.
+- Reviewer experience: present overall verdicts, side-by-side application vs. extracted values, confidence cues, and manual-review states.
+
+The intent is to keep the model in the extraction layer while letting deterministic rules drive the actual review outcome.
+
+Environment notes:
+
+- `OPENAI_API_KEY` enables image-based review for PNG/JPG and structured extraction for PDFs
+- searchable PDFs can still be reviewed without `OPENAI_API_KEY` using local text extraction plus heuristic validation
+- in production, the model-backed extraction layer could be replaced with local OCR services or Azure-hosted models depending on agency network requirements
+- the prototype is intentionally standalone and does not integrate with COLA, auth, or long-term storage
+
+Local smoke test:
+
+1. Start the app:
+
+```bash
+npm start
+```
+
+2. In another terminal, run:
+
+```bash
+npm run label-review:smoketest
+```
+
+Optional deployed target:
+
+```bash
+npm run label-review:smoketest -- --base "https://YOUR_DEPLOYED_DOMAIN"
+```
+
+Optional full-file review with a real label fixture:
+
+```bash
+npm run label-review:smoketest -- --file "C:\path\to\label.pdf"
+```
+
+The default smoke test verifies the public `/label-review` page and the `/api/label-review` validation contract without requiring a local fixture file. If you pass `--file`, it will also submit that real PNG, JPG, or PDF label to the live API.
+
+Local validation note:
+
+- In local testing on this machine, the bundled `perfect-match.png` sample completed a successful review in about 3.4 seconds. This is an anecdotal sample result, not a performance guarantee.
+
+## What I Prioritized
+
+- A reviewer-centered workflow over backend integration.
+- Clear pass, manual-review, and reject states over pretending the model is always certain.
+- Fast local handling for searchable PDFs before falling back to AI-assisted extraction.
+- A standalone architecture so the extraction layer can be swapped later without changing the review UI.
+
+## Known Limitations
+
+- PNG and JPG review currently depend on an OpenAI-compatible vision endpoint, which may be unsuitable in restricted government networks without a local model or approved internal service.
+- The government warning check is strict about text and the all-caps `GOVERNMENT WARNING:` heading, but typography verification was intentionally deferred because reliable font-weight and sizing analysis requires image-layout processing beyond the scope of this prototype.
+- The UI is designed for fast human review, but it does not currently measure or guarantee sub-5-second latency across all environments.
+- No COLA workflow integration, persistence, or federal deployment controls are included in this prototype by design.
+
+## Production Considerations
+
+- Replace or augment the current image OCR path with an internal OCR or vision service that can run in restricted network environments.
+- Add explicit timing telemetry so performance claims are measured rather than inferred.
+- Expand validation rules for beverage-specific requirements such as imports, bottler address, and class-specific ABV exceptions.
+- Add operator audit logs, retention policies, and a structured human-review queue before treating the tool as more than a proof of concept.
+
 ## Flashcards Local Smoketest
 
 Run this to verify RunPod output is parseable (bypasses auth using `FLASHCARDS_TEST_KEY`).

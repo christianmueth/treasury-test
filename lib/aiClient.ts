@@ -1,8 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+type MessageContentPart = {
+  type: string;
+  [key: string]: unknown;
+};
+
 interface Message {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | MessageContentPart[];
 }
 
 function stripThinkBlocks(text: string): string {
