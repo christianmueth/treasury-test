@@ -51,13 +51,15 @@ type SampleScenario = {
   metadata: ManualApplicationData;
 };
 
-const SAMPLE_JSON = `{
-  "brand_name": "OLD TOM DISTILLERY",
-  "class_type": "Kentucky Straight Bourbon Whiskey",
-  "abv": "45%",
-  "proof": "90",
-  "net_contents": "750 mL"
-}`;
+const EMPTY_APPLICATION: ManualApplicationData = {
+  brand_name: "",
+  class_type: "",
+  abv: "",
+  proof: "",
+  net_contents: "",
+};
+
+const EMPTY_APPLICATION_JSON = JSON.stringify(EMPTY_APPLICATION, null, 2);
 
 const SAMPLE_SCENARIOS: SampleScenario[] = [
   {
@@ -109,14 +111,8 @@ const SAMPLE_SCENARIOS: SampleScenario[] = [
 
 export default function AlcoholLabelReviewApp() {
   const [files, setFiles] = useState<File[]>([]);
-  const [applicationJson, setApplicationJson] = useState(SAMPLE_JSON);
-  const [manualApplication, setManualApplication] = useState<ManualApplicationData>({
-    brand_name: "OLD TOM DISTILLERY",
-    class_type: "Kentucky Straight Bourbon Whiskey",
-    abv: "45%",
-    proof: "90",
-    net_contents: "750 mL",
-  });
+  const [applicationJson, setApplicationJson] = useState(EMPTY_APPLICATION_JSON);
+  const [manualApplication, setManualApplication] = useState<ManualApplicationData>(EMPTY_APPLICATION);
   const [results, setResults] = useState<BatchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +142,24 @@ export default function AlcoholLabelReviewApp() {
     } catch {
       // Keep the textarea editable even when JSON is temporarily invalid.
     }
+  }
+
+  function handleFileSelection(selectedFiles: File[]) {
+    const shouldUseExtractionOnly = activeScenarioId !== null || !hasRequiredApplicationData(applicationJson);
+
+    setFiles(selectedFiles);
+    setActiveScenarioId(null);
+
+    if (selectedFiles.length === 0 || loading) {
+      return;
+    }
+
+    if (shouldUseExtractionOnly) {
+      setManualApplication(EMPTY_APPLICATION);
+      setApplicationJson(EMPTY_APPLICATION_JSON);
+    }
+
+    void autoAnalyzeSelectedFiles(selectedFiles, { extractOnly: shouldUseExtractionOnly });
   }
 
   async function loadScenario(scenario: SampleScenario) {
@@ -189,7 +203,30 @@ export default function AlcoholLabelReviewApp() {
     }
   }
 
-  async function analyzeFiles(selectedFiles: File[], payloads: unknown[]) {
+  async function autoAnalyzeSelectedFiles(selectedFiles: File[], options?: { extractOnly?: boolean }) {
+    if (options?.extractOnly) {
+      await analyzeFiles(selectedFiles, [{}], { extractOnly: true });
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(applicationJson);
+      const payloads = Array.isArray(parsed) ? parsed : [parsed];
+
+      if (selectedFiles.length > 1 && payloads.length !== selectedFiles.length) {
+        setError("Files queued. For batch review, provide a JSON array with one application object per uploaded file in the same order, then click Review batch.");
+        setResults([]);
+        return;
+      }
+
+      await analyzeFiles(selectedFiles, payloads);
+    } catch {
+      setError("Files queued. Fix the application JSON, then click Review label.");
+      setResults([]);
+    }
+  }
+
+  async function analyzeFiles(selectedFiles: File[], payloads: unknown[], options?: { extractOnly?: boolean }) {
     setLoading(true);
     setError(null);
     setResults([]);
@@ -200,6 +237,9 @@ export default function AlcoholLabelReviewApp() {
           const formData = new FormData();
           formData.append("label", file);
           formData.append("applicationData", JSON.stringify(payloads[Math.min(index, payloads.length - 1)]));
+          if (options?.extractOnly) {
+            formData.append("extractOnly", "1");
+          }
 
           const response = await fetch("/api/label-review", {
             method: "POST",
@@ -297,7 +337,7 @@ export default function AlcoholLabelReviewApp() {
                 accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
                 multiple
                 className="mt-3 block w-full text-sm"
-                onChange={(event) => setFiles(Array.from(event.target.files || []))}
+                onChange={(event) => handleFileSelection(Array.from(event.target.files || []))}
               />
             </label>
 
@@ -619,4 +659,20 @@ function formatFileSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${bytes} B`;
+}
+
+function hasRequiredApplicationData(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+
+    const candidate = parsed as Record<string, unknown>;
+    return [candidate.brand_name, candidate.class_type, candidate.net_contents].every(
+      (field) => String(field || "").trim().length > 0
+    );
+  } catch {
+    return false;
+  }
 }

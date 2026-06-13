@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const label = formData.get("label") as File | null;
     const applicationDataText = String(formData.get("applicationData") || "");
+    const extractOnly = String(formData.get("extractOnly") || "") === "1";
 
     if (!label) {
       return NextResponse.json({ ok: false, error: "A label file is required." }, { status: 400 });
@@ -30,9 +31,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Label file must be between 1 byte and 12MB." }, { status: 400 });
     }
 
-    const applicationData = parseApplicationData(applicationDataText);
     const extracted = await extractLabelData(label);
-    const review = buildLabelReviewResult(applicationData, extracted);
+    const review = extractOnly
+      ? buildExtractionOnlyResult(extracted)
+      : buildLabelReviewResult(parseApplicationData(applicationDataText), extracted);
 
     return NextResponse.json({
       ok: true,
@@ -255,6 +257,49 @@ function toOptionalString(value: unknown) {
 function toConfidence(value: unknown) {
   const num = typeof value === "number" ? value : Number(value);
   return Number.isFinite(num) ? Math.max(0, Math.min(1, num)) : 0;
+}
+
+function buildExtractionOnlyResult(extracted: ExtractedLabelData) {
+  const fieldDefinitions = [
+    { key: "brand_name", label: "Brand name" },
+    { key: "class_type", label: "Class/type" },
+    { key: "abv", label: "Alcohol content" },
+    { key: "proof", label: "Proof" },
+    { key: "net_contents", label: "Net contents" },
+    { key: "government_warning", label: "Government warning" },
+  ] as const;
+
+  const checks = fieldDefinitions
+    .map(({ key, label }) => {
+      const actual = extracted.fields[key];
+      if (!actual) {
+        return null;
+      }
+
+      return {
+        key,
+        label,
+        status: "manual" as const,
+        expected: "No application value provided",
+        actual,
+        confidence: toConfidence(extracted.field_confidence[key]),
+        explanation: "Field extracted from the uploaded label. Add application data to run deterministic validation.",
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    applicationData: {},
+    extracted,
+    checks,
+    overallRecommendation: "manual_review" as const,
+    summary: checks.length > 0
+      ? "Label text extracted. Add application data to compare against the submission."
+      : "No structured fields were extracted confidently enough for validation.",
+    criticalFindings: [
+      "No application data was supplied, so this result is an extraction-only preview.",
+    ],
+  };
 }
 
 function inferMimeType(fileName: string) {
