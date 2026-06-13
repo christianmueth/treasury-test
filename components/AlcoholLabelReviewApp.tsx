@@ -154,6 +154,7 @@ export default function AlcoholLabelReviewApp() {
     setActiveScenarioId(scenario.id);
     setManualApplication(scenario.metadata);
     setApplicationJson(JSON.stringify(scenario.metadata, null, 2));
+    setResults([]);
 
     try {
       const response = await fetch(scenario.labelUrl);
@@ -164,6 +165,7 @@ export default function AlcoholLabelReviewApp() {
       const blob = await response.blob();
       const file = new File([blob], scenario.labelFileName, { type: blob.type || "image/png" });
       setFiles([file]);
+      await analyzeFiles([file], [scenario.metadata]);
     } catch (scenarioError) {
       setFiles([]);
       setActiveScenarioId(null);
@@ -174,10 +176,6 @@ export default function AlcoholLabelReviewApp() {
   async function handleAnalyze() {
     if (!files.length || loading) return;
 
-    setLoading(true);
-    setError(null);
-    setResults([]);
-
     try {
       const parsed = JSON.parse(applicationJson);
       const payloads = Array.isArray(parsed) ? parsed : [parsed];
@@ -185,9 +183,20 @@ export default function AlcoholLabelReviewApp() {
       if (files.length > 1 && payloads.length !== files.length) {
         throw new Error("For batch review, provide a JSON array with one application object per uploaded file in the same order.");
       }
+      await analyzeFiles(files, payloads);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Review failed.");
+    }
+  }
 
+  async function analyzeFiles(selectedFiles: File[], payloads: unknown[]) {
+    setLoading(true);
+    setError(null);
+    setResults([]);
+
+    try {
       const nextResults = await Promise.all(
-        files.map(async (file, index) => {
+        selectedFiles.map(async (file, index) => {
           const formData = new FormData();
           formData.append("label", file);
           formData.append("applicationData", JSON.stringify(payloads[Math.min(index, payloads.length - 1)]));
@@ -214,8 +223,8 @@ export default function AlcoholLabelReviewApp() {
       );
 
       setResults(nextResults);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Review failed.");
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : "Review failed.");
     } finally {
       setLoading(false);
     }
@@ -376,7 +385,7 @@ export default function AlcoholLabelReviewApp() {
 
           {results.length === 0 ? (
             <div className="rounded-[1.75rem] border border-dashed border-stone-300 bg-white/70 p-8 text-sm text-stone-500 shadow-sm">
-              Upload a label and run the review to populate this panel.
+              Select a sample scenario or upload a label to begin review.
             </div>
           ) : (
             results.map((result) => (
